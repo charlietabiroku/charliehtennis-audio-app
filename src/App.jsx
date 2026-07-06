@@ -44,19 +44,36 @@ function buildSpeech(scores, language, winner = null) {
   return buildScoreCall(scores, language)
 }
 
+function buildSpokenSpeech(scores, language, winner = null) {
+  if (winner) return buildSpeech(scores, language, winner)
+  if (language === 'en-US') return `${scores.server}, to, ${scores.receiver}`
+  return buildSpeech(scores, language)
+}
+
+function chooseVoice(language) {
+  const voices = window.speechSynthesis.getVoices()
+  if (!voices.length) return null
+  if (language === 'en-US') {
+    const preferred = ['Samantha', 'Alex', 'Google US English', 'Microsoft Jenny', 'Microsoft Aria', 'Daniel']
+    return preferred.map((name) => voices.find((voice) => voice.lang.startsWith('en') && voice.name.includes(name))).find(Boolean) || voices.find((voice) => voice.lang === 'en-US') || voices.find((voice) => voice.lang.startsWith('en')) || null
+  }
+  return voices.find((voice) => voice.lang === language) || voices.find((voice) => voice.lang.startsWith(language.slice(0, 2))) || null
+}
+
 function speak(text, language) {
   if (!('speechSynthesis' in window)) return
   window.speechSynthesis.cancel()
   const utterance = new SpeechSynthesisUtterance(text)
   utterance.lang = language
-  utterance.rate = language === 'zh-CN' ? 0.9 : 0.95
+  utterance.voice = chooseVoice(language)
+  utterance.rate = language === 'en-US' ? 0.78 : language === 'zh-CN' ? 0.9 : 0.95
+  utterance.pitch = language === 'en-US' ? 1.05 : 1
   window.speechSynthesis.speak(utterance)
 }
 
 function Icon({ type }) {
   const paths = {
     plus: 'M12 5v14M5 12h14',
-    minus: 'M5 12h14',
     undo: 'M9 7H4v5m.5-.5A8 8 0 1 0 7 5.7',
     reset: 'M4 4v6h6M20 20v-6h-6M5 14a7 7 0 0 0 12 4M19 10A7 7 0 0 0 7 6',
     volume: 'M4 10v4h4l5 4V6L8 10H4Zm12-2a5 5 0 0 1 0 8m2.5-10.5a8 8 0 0 1 0 13',
@@ -71,7 +88,7 @@ function App() {
   const [language, setLanguage] = useState('ja-JP')
   const [clock, setClock] = useState(222)
   const [lastCall, setLastCall] = useState('Ready')
-  const [targetScore, setTargetScore] = useState(11)
+  const [targetScore, setTargetScore] = useState(10)
   const [theme, setTheme] = useState(() => localStorage.getItem('charlie-theme') || 'light')
   const winner = useMemo(() => (isGameOver(scores, targetScore) ? getLead(scores) : null), [scores, targetScore])
   const leader = useMemo(() => getLead(scores), [scores])
@@ -84,7 +101,7 @@ function App() {
   function announce(nextScores, nextLanguage = language, nextWinner = null) {
     const text = buildSpeech(nextScores, nextLanguage, nextWinner)
     setLastCall(text)
-    speak(text, nextLanguage)
+    speak(buildSpokenSpeech(nextScores, nextLanguage, nextWinner), nextLanguage)
   }
 
   function addPoint(playerKey) {
@@ -94,16 +111,6 @@ function App() {
       const nextWinner = isGameOver(next, targetScore) ? getLead(next) : null
       setActionStack((items) => [{ id: crypto.randomUUID(), delta: 1, player: playerKey }, ...items].slice(0, 20))
       announce(next, language, nextWinner)
-      return next
-    })
-  }
-
-  function removePoint(playerKey) {
-    if (scores[playerKey] === 0) return
-    setScores((current) => {
-      const next = { ...current, [playerKey]: Math.max(0, current[playerKey] - 1) }
-      setActionStack((items) => [{ id: crypto.randomUUID(), delta: -1, player: playerKey }, ...items].slice(0, 20))
-      announce(next)
       return next
     })
   }
@@ -135,9 +142,7 @@ function App() {
   }
 
   function callAllLanguages() {
-    LANGUAGES.forEach((item, index) => {
-      window.setTimeout(() => speak(buildSpeech(scores, item.code, winner), item.code), index * 1600)
-    })
+    LANGUAGES.forEach((item, index) => window.setTimeout(() => speak(buildSpokenSpeech(scores, item.code, winner), item.code), index * 1800))
     setLastCall('JA / EN / ZH')
   }
 
@@ -149,11 +154,11 @@ function App() {
       </header>
       <section className="status-strip">
         <div className="timer"><span>Match</span><strong>{formatClock(clock)}</strong><button type="button" onClick={() => setClock((value) => value + 1)} aria-label="Add one second">+1s</button></div>
-        <div className="match-settings" aria-label="Match point settings"><span>Point match</span><div className="target-control"><button type="button" onClick={() => updateTargetScore(targetScore - 1)} aria-label="Decrease match point">-</button><input aria-label="Match point" inputMode="numeric" max="99" min="1" type="number" value={targetScore} onChange={(event) => updateTargetScore(event.target.value)} /><button type="button" onClick={() => updateTargetScore(targetScore + 1)} aria-label="Increase match point">+</button></div><div className="preset-points" aria-label="Point presets">{[7, 11, 15, 21].map((point) => <button key={point} className={targetScore === point ? 'active' : ''} type="button" onClick={() => updateTargetScore(point)}>{point}</button>)}</div></div>
+        <div className="match-settings" aria-label="Match point settings"><span>Point match</span><div className="target-control"><button type="button" onClick={() => updateTargetScore(targetScore - 1)} aria-label="Decrease match point">-</button><input aria-label="Match point" inputMode="numeric" max="99" min="1" type="number" value={targetScore} onChange={(event) => updateTargetScore(event.target.value)} /><button type="button" onClick={() => updateTargetScore(targetScore + 1)} aria-label="Increase match point">+</button></div><div className="preset-points" aria-label="Point presets">{[6, 10, 15].map((point) => <button key={point} className={targetScore === point ? 'active' : ''} type="button" onClick={() => updateTargetScore(point)}>{point}</button>)}</div></div>
         <button className="speak-button" type="button" onClick={() => announce(scores, language, winner)}><Icon type={winner ? 'trophy' : 'volume'} />{winner ? buildSpeech(scores, 'ja-JP', winner) : 'Speak score'}</button>
         <div className="last-call"><span>Last call</span><strong>{lastCall}</strong></div>
       </section>
-      <section className="scoreboard" aria-label="Scoreboard">{[PLAYERS.server, PLAYERS.receiver].map((player) => <article className={`score-panel ${player.theme}`} key={player.key}><div className="panel-head"><div><p>{player.english}</p><h2>{player.label}</h2></div><span className={leader?.key === player.key ? 'lead active' : 'lead'}>{leader?.key === player.key ? 'Lead' : 'Ready'}</span></div><button className="score-hit" type="button" onClick={() => addPoint(player.key)}>{scores[player.key]}</button><div className="panel-actions"><button type="button" onClick={() => removePoint(player.key)} aria-label={`${player.label} minus one`}><Icon type="minus" /></button><button type="button" onClick={() => addPoint(player.key)} aria-label={`${player.label} plus one`}><Icon type="plus" /></button></div></article>)}</section>
+      <section className="scoreboard" aria-label="Scoreboard">{[PLAYERS.server, PLAYERS.receiver].map((player) => <article className={`score-panel ${player.theme}`} key={player.key}><div className="panel-head"><div><p>{player.english}</p><h2>{player.label}</h2></div><span className={leader?.key === player.key ? 'lead active' : 'lead'}>{leader?.key === player.key ? 'Lead' : 'Ready'}</span></div><button className="score-hit" type="button" onClick={() => addPoint(player.key)}>{scores[player.key]}</button><div className="panel-actions"><button type="button" onClick={() => addPoint(player.key)} aria-label={`${player.label} plus one`}><Icon type="plus" /></button></div></article>)}</section>
       <footer className="control-dock"><div className="quick-actions"><button type="button" onClick={undo}><Icon type="undo" />Undo</button><button type="button" onClick={resetMatch}><Icon type="reset" />Reset</button><button type="button" onClick={callAllLanguages}><Icon type="volume" />3 voices</button></div></footer>
     </main>
   )
