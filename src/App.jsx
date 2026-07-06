@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
+import './scoreboard-updates.css'
 
 const LANGUAGES = [
   { code: 'ja-JP', label: '日本語' },
